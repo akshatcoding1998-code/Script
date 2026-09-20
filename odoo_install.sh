@@ -212,7 +212,8 @@ if [ "$IS_ENTERPRISE" = "True" ]; then
     echo -e "\n---- Installing pgvector for the Enterprise AI features ----"
     if sudo apt-get install -y "postgresql-${PG_SERVER_MAJOR}-pgvector"; then
         # The Odoo role is intentionally not a superuser, so it cannot run CREATE EXTENSION
-        # itself. Creating the extension in template1 makes every new database inherit it.
+        # itself. Create it in template1 and point Odoo at that template (db_template
+        # defaults to template0, which would NOT inherit the extension).
         sudo -u postgres psql -v ON_ERROR_STOP=1 -d template1 <<'SQL'
 CREATE EXTENSION IF NOT EXISTS vector;
 SQL
@@ -533,6 +534,11 @@ sudo su root -c "printf 'http_port = ${OE_PORT}\n' >> /etc/${OE_CONFIG}.conf"
 # 'longpolling_port' was removed in Odoo 20, the websocket worker uses 'gevent_port'.
 sudo su root -c "printf 'gevent_port = ${GEVENT_PORT}\n' >> /etc/${OE_CONFIG}.conf"
 sudo su root -c "printf 'logfile = /var/log/${OE_USER}/${OE_CONFIG}.log\n' >> /etc/${OE_CONFIG}.conf"
+if [ "$IS_ENTERPRISE" = "True" ]; then
+    # pgvector lives in template1; without this Odoo would build databases from
+    # template0 and the Enterprise AI modules would not find the vector extension.
+    sudo su root -c "printf 'db_template = template1\n' >> /etc/${OE_CONFIG}.conf"
+fi
 
 if [ $IS_ENTERPRISE = "True" ]; then
     # The enterprise addons have to come first so that they override the community ones.
