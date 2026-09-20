@@ -116,3 +116,12 @@ If you'd like you can use my [DigitalOcean referral link](https://m.do.co/c/d605
 ## Minimal server requirements
 While technically you can run an Odoo instance on 1GB (1024MB) of RAM it is absolutely not advised. A Linux instance typically uses 300MB-500MB and the rest has to be split among Odoo, postgreSQL and others. If you install an Odoo you should make sure to use at least 2GB of RAM. This script might fail with less resources too.
 There are known issues on DigitalOcean for example where the installation crashes on 1GB RAM machines. See https://github.com/Yenthe666/InstallScript/issues/243
+
+## Credits
+This script is maintained by [Yenthe Van Ginneken](https://github.com/Yenthe666) and is based on the
+install script from [André Schenkels](https://github.com/aschenkels-ictstudio/openerp-install-scripts).
+
+The Odoo 20.0 port — the Python 3.12 / PostgreSQL 16 requirements, the `http_interface` and
+`gevent_port` configuration changes, the merged Ubuntu/Debian scripts, the patched wkhtmltopdf and
+Paper Muncher handling, and the Docker test harness — was contributed by
+[Mina Adel](https://github.com/minaonlyone).
