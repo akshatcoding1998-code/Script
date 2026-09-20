@@ -5,6 +5,16 @@ This script is based on the install script from André Schenkels (https://github
 but goes a bit further and has been improved. This script will also give you the ability to define an http_port in the .conf file that is generated under /etc/
 This script can be safely used in a multi-odoo code base server because the default Odoo port is changed BEFORE the Odoo is started.
 
+## Which script do I use?
+
+| Script | Target |
+|---|---|
+| `odoo_install.sh` | Ubuntu 24.04 LTS and newer |
+| `odoo_install_debian.sh` | Debian 13 (trixie) and newer |
+
+Both scripts now share the same logic and options; only the defaults (distribution
+codename, certbot install method) differ.
+
 ## Requirements for Odoo 20
 
 Odoo 20 raised its minimum requirements. The script checks both and aborts with a clear
@@ -14,12 +24,17 @@ message instead of producing a broken install:
 |---|---|---|
 | Python | 3.10+ | **3.12+** |
 | PostgreSQL | 13+ | **16+** |
+| `http_interface` default | `0.0.0.0` | **`127.0.0.1`** |
 
-Because of the Python requirement, **Ubuntu 22.04 can no longer run Odoo 20**. Use
-Ubuntu 24.04 LTS (or newer) or Debian 13.
+Because of the Python requirement, **Ubuntu 22.04 (Python 3.10) and Debian 12
+(Python 3.11) can no longer run Odoo 20**. Use Ubuntu 24.04 LTS or Debian 13 or newer.
 
 ## What changed compared to the 19.0 branch
 
+- **`http_interface` now defaults to `127.0.0.1` in Odoo 20** (it was `0.0.0.0` up to
+  Odoo 19). Without setting it, a fresh Odoo 20 is only reachable from the machine
+  itself. The script writes it explicitly: `0.0.0.0` on a plain install, `127.0.0.1`
+  when Nginx is installed in front of Odoo. Override with `HTTP_INTERFACE`.
 - `longpolling_port` was removed from Odoo; the config file now writes `gevent_port`.
 - The Nginx template proxies `/websocket` to the gevent port with the `Upgrade` /
   `Connection` headers, which is what the Odoo bus actually uses (the old
@@ -40,6 +55,8 @@ Ubuntu 24.04 LTS (or newer) or Debian 13.
   script is still used automatically when systemd is not available (for example inside
   a container).
 - The addons path no longer drops `custom/addons` when Enterprise is installed.
+- `odoo_install_debian.sh` was brought up to date; it was still pinned at Odoo 14.0 with
+  wkhtmltopdf 0.12.5 Buster download links.
 
 ## Installing Nginx
 If you set the parameter ```INSTALL_NGINX``` to ```True``` you should also configure workers. Without workers you will probably get connection loss issues. Look at [the deployment guide from Odoo](https://www.odoo.com/documentation/20.0/administration/on_premise/deploy.html) on how to configure workers.
@@ -56,6 +73,7 @@ There are a few things you can configure, this is the most used list:<br/>
 ```GENERATE_RANDOM_PASSWORD``` if this is set to ```True``` the script will generate a random password, if set to ```False```we'll set the password that is configured in ```OE_SUPERADMIN```. By default the value is ```True``` and the script will generate a random and secure password.<br/>
 ```INSTALL_WKHTMLTOPDF``` set to ```False``` if you do not want to install Wkhtmltopdf, if you want to install it you should set it to ```True```.<br/>
 ```OE_PORT``` is the port where Odoo should run on, for example 8069.<br/>
+```HTTP_INTERFACE``` is the interface Odoo binds to. Leave empty to let the script pick (```0.0.0.0``` without Nginx, ```127.0.0.1``` with Nginx). Odoo 20 changed this default, see above.<br/>
 ```GEVENT_PORT``` is the port used by the websocket (live chat, bus, notifications), 8072 by default.<br/>
 ```OE_VERSION``` is the Odoo version to install, for example ```20.0``` for Odoo V20.<br/>
 ```IS_ENTERPRISE``` will install the Enterprise version on top of ```20.0``` if you set it to ```True```, set it to ```False``` if you want the community version of Odoo 20.<br/>

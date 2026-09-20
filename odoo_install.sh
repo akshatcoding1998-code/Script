@@ -1,6 +1,7 @@
 #!/bin/bash
 ################################################################################
-# Script for installing Odoo 20 on Ubuntu 24.04 LTS (and newer) / Debian 13
+# Script for installing Odoo 20 on Ubuntu 24.04 LTS (and newer)
+# For Debian, use odoo_install_debian.sh instead
 # Author: Yenthe Van Ginneken
 #-------------------------------------------------------------------------------
 # This script will install Odoo on your Ubuntu server. It can install multiple Odoo instances
@@ -27,6 +28,12 @@ OE_HOME_EXT="/$OE_USER/${OE_USER}-server"
 INSTALL_WKHTMLTOPDF="True"
 # Set the default Odoo port (you still have to use -c /etc/odoo-server.conf for example to use this.)
 OE_PORT="8069"
+# The interface Odoo listens on. Odoo 20 changed the default from 0.0.0.0 to 127.0.0.1,
+# so an Odoo 20 install is only reachable from the machine itself unless this is set.
+# Leave empty to let the script decide: 127.0.0.1 when Nginx is installed in front of
+# Odoo (the proxy connects locally, which is the safer setup), 0.0.0.0 otherwise so the
+# server stays reachable like it was on Odoo 19 and below.
+HTTP_INTERFACE=""
 # Choose the Odoo version which you want to install. For example: 20.0, 19.0 or saas-20.1.
 # When using 'master' the master version will be installed.
 # IMPORTANT! This script contains extra libraries that are specifically needed for Odoo 20.0
@@ -71,6 +78,14 @@ USE_SYSTEMD="True"
 MIN_PYTHON_MAJOR="3"
 MIN_PYTHON_MINOR="12"
 MIN_PG_VERSION="16"
+
+# Helper: is systemd the init system that is actually running?
+# The systemctl binary can be present without systemd being PID 1 (containers, chroots,
+# WSL1), in which case every systemctl call fails. /run/systemd/system only exists when
+# systemd is really running, which is the check systemd itself documents.
+systemd_is_running() {
+  [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
+}
 
 # Helper: pip install with optional --break-system-packages (Ubuntu 24.04 / PEP 668)
 pip_install() {
@@ -118,7 +133,7 @@ check_python_version() {
     echo "------------------------ERROR------------------------------"
     echo "Odoo ${OE_VERSION} requires Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} or above but this system has:"
     python3 --version
-    printf "Ubuntu 22.04 ships Python 3.10 and can no longer run Odoo 20.\nUse Ubuntu 24.04 LTS (or newer) or Debian 13.\n"
+    printf "Ubuntu 22.04 ships Python 3.10 and can no longer run Odoo 20.\nUse Ubuntu 24.04 LTS or newer.\n"
     echo "-----------------------------------------------------------"
     exit 1
   fi
@@ -161,7 +176,10 @@ else
 fi
 
 # Make sure PostgreSQL is up before we talk to it (Ubuntu 24.04 uses systemd).
-sudo systemctl start postgresql >/dev/null 2>&1 || sudo service postgresql start >/dev/null 2>&1 || true
+sudo systemctl start postgresql >/dev/null 2>&1 \
+  || sudo service postgresql start >/dev/null 2>&1 \
+  || sudo /etc/init.d/postgresql start >/dev/null 2>&1 \
+  || true
 PG_WAIT=0
 until sudo -u postgres pg_isready >/dev/null 2>&1; do
     PG_WAIT=$((PG_WAIT + 1))
@@ -262,6 +280,13 @@ install_dependencies_with_apt() {
   # Same parsing as Odoo's own setup/debinstall.sh, with alternatives resolved.
   while read -r spec; do
     [ -z "$spec" ] && continue
+    # debian/control asks for the unversioned postgresql-client. With the PGDG
+    # repository enabled that resolves to the newest client available, which pulls in a
+    # second major version next to the server we just installed. Pin it to the server.
+    if [ "$spec" = "postgresql-client" ]; then
+      packages+=("postgresql-client-${PG_SERVER_MAJOR}")
+      continue
+    fi
     if picked=$(apt_pick_alternative "$spec"); then
       packages+=("$picked")
     else
@@ -494,6 +519,16 @@ sudo su root -c "printf 'admin_passwd = ${OE_SUPERADMIN}\n' >> /etc/${OE_CONFIG}
 # lets anyone enumerate database names. Left commented so the web database
 # manager still works for creating the first database right after install.
 sudo su root -c "printf '; list_db = False\n' >> /etc/${OE_CONFIG}.conf"
+if [ -z "$HTTP_INTERFACE" ]; then
+    if [ "$INSTALL_NGINX" = "True" ]; then
+        HTTP_INTERFACE="127.0.0.1"
+    else
+        HTTP_INTERFACE="0.0.0.0"
+    fi
+fi
+# Odoo 20 defaults http_interface to 127.0.0.1 (it was 0.0.0.0 up to Odoo 19), so it has
+# to be written explicitly or the server is only reachable from localhost.
+sudo su root -c "printf 'http_interface = ${HTTP_INTERFACE}\n' >> /etc/${OE_CONFIG}.conf"
 sudo su root -c "printf 'http_port = ${OE_PORT}\n' >> /etc/${OE_CONFIG}.conf"
 # 'longpolling_port' was removed in Odoo 20, the websocket worker uses 'gevent_port'.
 sudo su root -c "printf 'gevent_port = ${GEVENT_PORT}\n' >> /etc/${OE_CONFIG}.conf"
@@ -516,7 +551,7 @@ sudo chmod 755 $OE_HOME_EXT/start.sh
 #--------------------------------------------------
 # Adding ODOO as a service
 #--------------------------------------------------
-if [ "$USE_SYSTEMD" = "True" ] && command -v systemctl >/dev/null 2>&1; then
+if [ "$USE_SYSTEMD" = "True" ] && systemd_is_running; then
   echo -e "* Create systemd unit file"
   cat <<EOF > ~/$OE_CONFIG.service
 [Unit]
@@ -750,7 +785,7 @@ else
 fi
 
 echo -e "* Starting Odoo Service"
-if [ "$USE_SYSTEMD" = "True" ] && command -v systemctl >/dev/null 2>&1; then
+if [ "$USE_SYSTEMD" = "True" ] && systemd_is_running; then
   sudo systemctl start $OE_CONFIG
 else
   sudo su root -c "/etc/init.d/$OE_CONFIG start"
@@ -758,7 +793,7 @@ fi
 echo "-----------------------------------------------------------"
 echo "Done! The Odoo server is up and running. Specifications:"
 echo "Odoo version: $OE_VERSION"
-echo "Port: $OE_PORT"
+echo "Listening on: ${HTTP_INTERFACE}:${OE_PORT}"
 echo "Gevent (websocket) port: $GEVENT_PORT"
 echo "User service: $OE_USER"
 echo "Configuraton file location: /etc/${OE_CONFIG}.conf"

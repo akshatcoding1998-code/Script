@@ -1,40 +1,53 @@
 # Odoo 20 Installer Test Environment
 
-This folder provides a minimal Docker setup to exercise the `odoo_install.sh` script in a clean Ubuntu 24.04 container.
+This folder provides a minimal Docker setup to exercise the installer scripts in clean
+containers:
+
+| Service | Image | Script under test | Host port |
+|---|---|---|---|
+| `odoo20-ubuntu` | `ubuntu:24.04` | `../odoo_install.sh` | 8069 |
+| `odoo20-debian` | `debian:13` | `../odoo_install_debian.sh` | 8169 |
 
 ## Prerequisites
 - Docker 24+
 - Docker Compose plugin (`docker compose` CLI)
 
-## Build the Image
+## Build the Images
 ```bash
 docker compose build
 ```
 
-## Start the Test Container
-Run the container detached so it stays online for manual testing:
+## Start the Test Containers
+Run the containers detached so they stay online for manual testing:
 ```bash
 docker compose up -d
 ```
 
-## Run the Installer Script Inside the Container
-1. Attach to the container shell:
-   ```bash
-   docker compose exec odoo20 bash
-   ```
-2. Make the script executable (first run only):
-   ```bash
-   chmod +x /opt/odoo-install/odoo_install.sh
-   ```
-3. Execute the installer:
-   ```bash
-   /opt/odoo-install/odoo_install.sh
-   ```
+## Run an Installer Script Inside a Container
 
-The script runs as root inside the container, so the bundled `sudo` calls succeed without additional configuration. The Docker image already sets locale and timezone data to avoid interactive prompts from `tzdata`.
+Ubuntu:
+```bash
+docker compose exec odoo20-ubuntu bash -c 'cp /opt/odoo-install/odoo_install.sh /root/run.sh && chmod +x /root/run.sh && /root/run.sh'
+```
+
+Debian:
+```bash
+docker compose exec odoo20-debian bash -c 'cp /opt/odoo-install/odoo_install_debian.sh /root/run.sh && chmod +x /root/run.sh && /root/run.sh'
+```
+
+The scripts are mounted read-only, so they are copied into the container before running.
+They run as root inside the container, so the bundled `sudo` calls succeed without
+additional configuration. The images already set locale and timezone data to avoid
+interactive prompts from `tzdata`.
+
+## Verify the Install
+```bash
+docker compose exec odoo20-ubuntu /etc/init.d/odoo-server start
+curl -sSI http://localhost:8069/web/database/selector | head -n 1
+```
 
 ## Reset the Environment
-To destroy the test container and start fresh:
+To destroy the test containers and start fresh:
 ```bash
 docker compose down -v
 ```
@@ -43,9 +56,13 @@ Re-run the **Build** and **Start** steps to begin another test cycle.
 
 ## Notes for Odoo 20
 
-- Odoo 20 requires Python 3.12+, so the image has to stay on Ubuntu 24.04 or newer.
-- Containers have no `systemd`, so the script automatically falls back to the
-  `/etc/init.d` service. Start the server manually with
-  `/etc/init.d/odoo-server start` (or run `odoo-bin` directly) to verify the install.
-- PostgreSQL is not started by an init system inside the container either; the script
-  uses `service postgresql start` as a fallback, which works in this image.
+- Odoo 20 requires Python 3.12+, so the images have to stay on Ubuntu 24.04+ / Debian 13+.
+  Ubuntu 22.04 (Python 3.10) and Debian 12 (Python 3.11) are rejected by the scripts.
+- Containers have no `systemd`, so the scripts automatically fall back to the
+  `/etc/init.d` service. Start the server with `/etc/init.d/odoo-server start`.
+- PostgreSQL is not started by an init system inside the container either; the scripts
+  fall back to `service postgresql start` and then `/etc/init.d/postgresql start`.
+- Paper Muncher (`INSTALL_PAPER_MUNCHER="True"`) is only published for amd64. On an
+  Apple Silicon or other arm64 host, test it with an amd64 container:
+  `docker compose build --build-arg TARGETPLATFORM=linux/amd64` or run the image with
+  `--platform linux/amd64`.
