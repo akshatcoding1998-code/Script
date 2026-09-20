@@ -1,4 +1,4 @@
-# Odoo 19 Installer Test Environment
+# Odoo 20 Installer Test Environment
 
 This folder provides a minimal Docker setup to exercise the `odoo_install.sh` script in a clean Ubuntu 24.04 container.
 
@@ -20,7 +20,7 @@ docker compose up -d
 ## Run the Installer Script Inside the Container
 1. Attach to the container shell:
    ```bash
-   docker compose exec odoo19 bash
+   docker compose exec odoo20 bash
    ```
 2. Make the script executable (first run only):
    ```bash
@@ -40,3 +40,12 @@ docker compose down -v
 ```
 
 Re-run the **Build** and **Start** steps to begin another test cycle.
+
+## Notes for Odoo 20
+
+- Odoo 20 requires Python 3.12+, so the image has to stay on Ubuntu 24.04 or newer.
+- Containers have no `systemd`, so the script automatically falls back to the
+  `/etc/init.d` service. Start the server manually with
+  `/etc/init.d/odoo-server start` (or run `odoo-bin` directly) to verify the install.
+- PostgreSQL is not started by an init system inside the container either; the script
+  uses `service postgresql start` as a fallback, which works in this image.
